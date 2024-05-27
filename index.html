@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<svg width="960" height="600"></svg>
+<div id='button'>Click</div>
+
+<script src="https://d3js.org/d3.v5.min.js"></script>
+<!-- <script src="d3.v4.min.js"></script> -->
+<script>
+	var width = .9*window.innerWidth
+	var height = .9*window.innerHeight
+	var ground = .95*height;
+
+	let color = 0;
+	//var numbers = [0, 1];
+	var links = [];
+	let linkId = 1;
+	link(0, 1, 'red');
+	let nId = 0;
+
+	var nodes = [];
+
+	// let nId = numbers.length;
+	// let count = 1;
+	// for(i=0; i<count; i++){
+	// 	n = nId++;
+	// 	console.log('add', n)
+	// 	numbers.push(n);
+	// 	link(1, n, 'blue')
+	// }
+
+
+function link(from, to, color){
+	links.push({id: linkId++, source: from, target: to, color: color || 'blue'});
+}
+
+function isGrounded(n, depth = 1){
+	if(n.isBase || n.isGrounded) return true;
+	console.log('isGrounded', n.id, depth);
+
+	if(depth++ > 5) return false;
+	// const grounded = n.isGrounded || links.some(x =>
+	// 	x.target === n && isGrounded(x.source, depth)) ||
+	// 	links.some(x.source === n && isGrounded(x.target, depth));
+		const grounded = links.some(x =>
+		x.target === n && isGrounded(x.source, depth) ||
+		x.source === n && isGrounded(x.target, depth));
+	n.isGrounded = grounded;
+	return grounded;
+}
+
+function makeNode(n) {
+	console.log('makeNode', n);
+	return {
+		id: n,
+		isBase: false,
+	};
+}
+
+var svg = d3.select('svg');
+svg.attr('width', width).attr('height', height);
+
+var linkElements, nodeElements, textElements;
+
+// we use svg groups to logically group the elements together
+var baseGroup = svg.append('g').attr('class', 'base')
+var linkGroup = svg.append('g').attr('class', 'branch')
+var nodeGroup = svg.append('g').attr('class', 'node')
+//var textGroup = svg.append('g').attr('class', 'texts')
+
+// select node is called on every click
+function selectNode(selectedNode) {
+//	console.log('before', nodes);
+	addNodeAt(selectedNode)
+	updateSimulation();
+}
+
+function removeBranch(branch) {
+	console.log(branch);
+
+	links.splice(links.indexOf(branch), 1);
+
+	// now remove branches/nodes that are no longer supported
+	nodes.forEach(n => n.isGrounded = n.isBase);
+	console.log('checking', nodes.length, 'nodes');
+	nodes = nodes.filter(x => isGrounded(x));
+	console.log(nodes);
+	console.log(links);
+	links = links.filter(x => x.source.isGrounded || x.target.isGrounded);
+
+	updateSimulation();
+}
+
+function colorBranch(branch) {
+	console.log('color', branch.color);
+	branch.color = branch.color == 'red' ? 'blue' :
+		branch.color == 'blue' ? 'green' :
+		'red';
+	d3.select(`#b${branch.id}`)
+		.attr('stroke', branch.color)
+}
+
+function colorNode(node, newColor) {
+	var color = newColor || (node.isBase ? 'black' : 'lightgrey');
+	d3.select(`#n${node.id}`)
+		.attr('fill', color)
+		.attr('r', newColor ? 10 : 8)
+}
+
+function addNodeAt(existingNode) {
+	var newId = nId++;
+	console.log('add', newId, 'at', existingNode.id);
+	// var x = nodes.find(n => n.id === newId)
+    // if ( x ) {
+    //   return x;
+    // }
+ 	nodes.push(makeNode(newId));
+	link(existingNode.id, newId, 'green');
+}
+
+function addBase() {
+	let nextBase = nId++;
+	var base = makeNode(nextBase);
+	makeBase(base);
+
+	base.fx = d3.event?.x ?? width/2;
+	
+	nodes.push(base);
+	addNodeAt(base);
+	updateSimulation();
+}
+
+const makeBase = node => {
+	node.isBase = true;
+	node.fy = ground;
+	colorNode(node);
+}
+
+const makeRegular = node => {
+	node.isBase = false;
+}
+
+function updateGraph(nodes) {
+  groundLine = baseGroup.selectAll('line').data([0])
+  .enter().append('line')
+    .attr('stroke-width', 5)
+    .attr('stroke', 'brown')
+	.attr('x1', 0).attr('y1', ground)
+	.attr('x2', width).attr('y2', ground)
+	.on('click', addBase)
+
+  // links
+  linkElements = linkGroup.selectAll('line')
+    .data(links, x => x.id)
+
+  linkElements.exit().transition()
+    .duration(1111).attr('y1', height).attr('y2', height)
+    .style('opacity', 0).remove()
+
+  var linkEnter = linkElements
+    .enter().append('line').attr("id", d => 'b'+d.id)
+    .attr('stroke-width', 6)
+    .attr('stroke', x => x.color || 'red')
+	.on('dblclick', removeBranch)
+	.on('click', colorBranch)
+
+  linkElements = linkEnter.merge(linkElements)
+
+  // nodes
+  nodeElements = nodeGroup.selectAll('circle')
+    .data(nodes, function (node) { return node.id })
+  nodeElements.exit().transition()
+    .duration(1111).attr('cy', height)
+    .style('opacity', 0).remove()
+  var nodeEnter = nodeElements
+    .enter()
+    .append('circle')
+    .attr('stroke',  'grey')
+	.attr("id", n => 'n' + n.id)
+    .attr('r', 8)
+//    .attr('cx', n => width)
+//    .attr('cy', n => n.x ?? height/2)
+    .attr('fill',  n => n.isBase ? 'black' : 'lightgrey')
+    .call(dragDrop)
+    // call selectNode method on every click
+    .on('click', selectNode)
+
+  nodeElements = nodeEnter.merge(nodeElements)
+
+  // texts
+//  textElements = textGroup.selectAll('text')
+//    .data(nodes, function (node) { return node.id })
+
+//  textElements.exit().remove()
+
+//   var textEnter = textElements
+//     .enter().append('text')
+//     .text(function (node) { return node.label })
+//     .attr('font-size', 10)
+//     .attr('dx', 10)
+//     .attr('dy', 4)
+
+//   textElements = textEnter.merge(textElements)
+}
+
+// simulation setup with all forces
+var linkForce = d3.forceLink()
+  .id(function (link) { return link.id })
+  .distance(50)
+  .strength(function (link) { return .99; })
+
+var simulation = d3.forceSimulation().force('link', linkForce)
+// force along horizontal direction
+//  .force('x', d3.forceX().x(function(d) { return 662; }))
+
+// force along vertical direction
+.force('y', d3.forceY().strength(.005).y(function(d) { return 0; }))
+
+//.force('repel', d3.forceManyBody().strength(-25)) // repel
+//.force('collision', d3.forceCollide().radius(22)) // keep distance
+
+//.force('center', d3.forceCenter(width/2, height/2))
+
+var toNode = null;
+const distanceSquared = (x, y, node) => (node.x - x)**2 + (node.y - y)**2;
+
+var dragDrop = d3.drag().on('start', function (node) {
+//	d3.select(this).classed("fixed", node.fixed = false);
+  node.fx = node.x
+  node.fy = node.y
+}).on('drag', function (node) {
+  simulation.alphaTarget(0.7).restart()
+  node.fx = d3.event.x
+  node.fy = d3.event.y
+  var distance = d3.event.y - ground
+  const delta = 13
+  var close = distance < delta && distance > -delta
+  if(close) makeBase(node);
+  else makeRegular(node);
+//  colorNode(node);
+
+  let delta2 = delta**2;
+  toNode = nodes.find(x => x.id != node.id && distanceSquared(event.x, event.y, x) < delta2);
+  colorNode(node, toNode ? 'yellow' : null);
+}).on('end', function (node) {
+	simulation.stop();
+	if(toNode)
+	{
+		glue(node, toNode);
+		toNode = null;
+	} 
+//	if (!d3.event.active) {
+		simulation.alphaTarget(0.7)
+//	}
+// make this node back to floating instead of fixed position
+//  node.fx = null
+//  node.fy = null
+})
+
+const glue = (node, toNode) => {
+	console.log('glue', node.id, toNode.id);
+	links.forEach(x => {
+		if(x.source === node) x.source = toNode;
+		if(x.target === node) x.target = toNode;
+	});
+	toNode.fx = toNode.x;
+	toNode.fy = toNode.y;
+
+	nodes.splice(nodes.indexOf(node), 1);
+//	makeBase(node);
+	updateSimulation();
+}
+//var nodes = numbers.map(makeNode);
+
+function updateSimulation() {
+
+  updateGraph(nodes)
+
+  simulation.nodes(nodes)
+  .on('tick', () => {
+    nodeElements
+//	.attr('cx', function (node) { return node.id ? node.x : width/2})
+//      .attr('cy', function (node) { return node.id ? node.y : ground })
+      .attr('cx', function (node) { return node.x })
+      .attr('cy', function (node) { return node.y  })
+    // textElements
+    //   .attr('x', function (node) { return node.x })
+    //   .attr('y', function (node) { return node.y })
+    linkElements
+      .attr('x1', function (link) { return link.source.x })
+      .attr('y1', function (link) { return link.source.y })
+      .attr('x2', function (link) { return link.target.x })
+      .attr('y2', function (link) { return link.target.y })
+  })
+
+  simulation.force('link').links(links)
+  simulation.alphaTarget(0.9).restart()
+}
+
+// trigger the initial render
+addBase();
+updateSimulation()
+
+	d3.select('#button').on('click', function(d) {
+//		addBase();
+		simulation.alphaTarget(0.7).restart()
+//		updateSimulation();
+//		color+=1;
+//		console.log(color);
+//		console.log(nodes.map(x=>x.id));
+//		console.log(links.map(x=>x.source.id));
+//		console.log(links.map(x=>x.target.id));
+		console.log(links);
+//		simulation.stop();
+	});
+
+</script>
