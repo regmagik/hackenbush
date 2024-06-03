@@ -1,5 +1,5 @@
 # hackenbush
-Hackenbush game state editor. Click to [edit a game state]([url](https://regmagik.github.io/hackenbush/)).
+Hackenbush game state editor. Click to [edit a game state](https://regmagik.github.io/hackenbush/).
 
 Uses d3 library to visualize the game state.
 
