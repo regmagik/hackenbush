@@ -9,14 +9,13 @@
 	var width = .9*window.innerWidth
 	var height = .9*window.innerHeight
 	var ground = .95*height;
+	const nodeRadius = 9;
 
 	let color = 0;
-	//var numbers = [0, 1];
 	var links = [];
 	let linkId = 1;
-	link(0, 1, 'red');
-	let nId = 0;
-
+//	link(0, 1, 'red');
+	let nId = 1;
 	var nodes = [];
 
 	// let nId = numbers.length;
@@ -28,24 +27,28 @@
 	// 	link(1, n, 'blue')
 	// }
 
-
 function link(from, to, color){
-	links.push({id: linkId++, source: from, target: to, color: color || 'blue'});
+	const link = {id: linkId++, source: from, target: to, color: color || 'blue'};
+	links.push(link);
+	return link;
 }
 
-function isGrounded(n, depth = 1){
-	if(n.isBase || n.isGrounded) return true;
-	console.log('isGrounded', n.id, depth);
+let visited = {}
+let neighbours = {}
 
-	if(depth++ > 5) return false;
-	// const grounded = n.isGrounded || links.some(x =>
-	// 	x.target === n && isGrounded(x.source, depth)) ||
-	// 	links.some(x.source === n && isGrounded(x.target, depth));
-		const grounded = links.some(x =>
-		x.target === n && isGrounded(x.source, depth) ||
-		x.source === n && isGrounded(x.target, depth));
-	n.isGrounded = grounded;
-	return grounded;
+function initConnections(){
+	neighbours = {}
+	links.forEach(link => {
+		if(!neighbours[link.source.id]) neighbours[link.source.id] = [];
+		if(!neighbours[link.target.id]) neighbours[link.target.id] = [];
+		neighbours[link.target.id].push(link.source.id);
+		neighbours[link.source.id].push(link.target.id);
+	});
+}
+function visitConnected(nodeId){
+	visited[nodeId] = true;
+	if(neighbours[nodeId])
+		neighbours[nodeId].forEach(id => {if(!visited[id]) visitConnected(id)});
 }
 
 function makeNode(n) {
@@ -76,17 +79,25 @@ function selectNode(selectedNode) {
 
 function removeBranch(branch) {
 	console.log(branch);
-
 	links.splice(links.indexOf(branch), 1);
 
-	// now remove branches/nodes that are no longer supported
-	nodes.forEach(n => n.isGrounded = n.isBase);
-	console.log('checking', nodes.length, 'nodes');
-	nodes = nodes.filter(x => isGrounded(x));
-	console.log(nodes);
-	console.log(links);
-	links = links.filter(x => x.source.isGrounded || x.target.isGrounded);
+	initConnections();
+	visited = {}
+	nodes.filter(n => n.isBase).forEach(n => {
+		visitConnected(n.id);
+	});
 
+	// now remove branches/nodes that are no longer supported
+//	nodes.forEach(n => n.isGrounded = null);
+//	nodes.forEach(n => n.isGrounded = isGrounded(n));
+//	console.log('checking', nodes.length, 'nodes');
+//	console.log(nodes);
+//	links = links.filter(x => x.source.isGrounded || x.target.isGrounded);
+	links = links.filter(x => visited[x.source.id]);
+//	console.log(links);
+//	console.log(nodes);
+	nodes = nodes.filter(x => links.some(l => l.source === x || l.target === x) );
+	console.log(nodes);
 	updateSimulation();
 }
 
@@ -103,18 +114,16 @@ function colorNode(node, newColor) {
 	var color = newColor || (node.isBase ? 'black' : 'lightgrey');
 	d3.select(`#n${node.id}`)
 		.attr('fill', color)
-		.attr('r', newColor ? 10 : 8)
+		.attr('stroke', newColor || 'grey')
+		.attr('r', newColor ? nodeRadius+2 : nodeRadius)
 }
 
 function addNodeAt(existingNode) {
 	var newId = nId++;
 	console.log('add', newId, 'at', existingNode.id);
-	// var x = nodes.find(n => n.id === newId)
-    // if ( x ) {
-    //   return x;
-    // }
- 	nodes.push(makeNode(newId));
-	link(existingNode.id, newId, 'green');
+	const newNode = makeNode(newId)
+ 	nodes.push(newNode);
+	return link(existingNode, newNode, 'green');
 }
 
 function addBase() {
@@ -122,11 +131,12 @@ function addBase() {
 	var base = makeNode(nextBase);
 	makeBase(base);
 
-	base.fx = d3.event?.x ?? width/2;
+	base.fx = d3.event?.x || width/2;
 	
 	nodes.push(base);
-	addNodeAt(base);
+	const link = addNodeAt(base);
 	updateSimulation();
+	return link;
 }
 
 const makeBase = node => {
@@ -153,7 +163,7 @@ function updateGraph(nodes) {
     .data(links, x => x.id)
 
   linkElements.exit().transition()
-    .duration(1111).attr('y1', height).attr('y2', height)
+    .duration(333).attr('y1', height).attr('y2', height)
     .style('opacity', 0).remove()
 
   var linkEnter = linkElements
@@ -169,16 +179,13 @@ function updateGraph(nodes) {
   nodeElements = nodeGroup.selectAll('circle')
     .data(nodes, function (node) { return node.id })
   nodeElements.exit().transition()
-    .duration(1111).attr('cy', height)
+    .duration(333).attr('cy', height)
     .style('opacity', 0).remove()
   var nodeEnter = nodeElements
-    .enter()
-    .append('circle')
+    .enter().append('circle')
     .attr('stroke',  'grey')
 	.attr("id", n => 'n' + n.id)
-    .attr('r', 8)
-//    .attr('cx', n => width)
-//    .attr('cy', n => n.x ?? height/2)
+    .attr('r', nodeRadius)
     .attr('fill',  n => n.isBase ? 'black' : 'lightgrey')
     .call(dragDrop)
     // call selectNode method on every click
@@ -216,7 +223,7 @@ var simulation = d3.forceSimulation().force('link', linkForce)
 .force('y', d3.forceY().strength(.005).y(function(d) { return 0; }))
 
 //.force('repel', d3.forceManyBody().strength(-25)) // repel
-//.force('collision', d3.forceCollide().radius(22)) // keep distance
+.force('collision', d3.forceCollide().radius(22)) // keep distance
 
 //.force('center', d3.forceCenter(width/2, height/2))
 
@@ -225,22 +232,22 @@ const distanceSquared = (x, y, node) => (node.x - x)**2 + (node.y - y)**2;
 
 var dragDrop = d3.drag().on('start', function (node) {
 //	d3.select(this).classed("fixed", node.fixed = false);
-  node.fx = node.x
-  node.fy = node.y
+//  node.fx = node.x
+//  node.fy = node.y
 }).on('drag', function (node) {
-  simulation.alphaTarget(0.7).restart()
   node.fx = d3.event.x
   node.fy = d3.event.y
   var distance = d3.event.y - ground
-  const delta = 13
+  const delta = nodeRadius
   var close = distance < delta && distance > -delta
   if(close) makeBase(node);
   else makeRegular(node);
-//  colorNode(node);
+  colorNode(node);
 
   let delta2 = delta**2;
   toNode = nodes.find(x => x.id != node.id && distanceSquared(event.x, event.y, x) < delta2);
   colorNode(node, toNode ? 'yellow' : null);
+  simulation.alphaTarget(0.7).restart()
 }).on('end', function (node) {
 	simulation.stop();
 	if(toNode)
@@ -249,7 +256,7 @@ var dragDrop = d3.drag().on('start', function (node) {
 		toNode = null;
 	} 
 //	if (!d3.event.active) {
-		simulation.alphaTarget(0.7)
+//		simulation.alphaTarget(0.7)
 //	}
 // make this node back to floating instead of fixed position
 //  node.fx = null
@@ -266,10 +273,8 @@ const glue = (node, toNode) => {
 	toNode.fy = toNode.y;
 
 	nodes.splice(nodes.indexOf(node), 1);
-//	makeBase(node);
 	updateSimulation();
 }
-//var nodes = numbers.map(makeNode);
 
 function updateSimulation() {
 
@@ -278,8 +283,6 @@ function updateSimulation() {
   simulation.nodes(nodes)
   .on('tick', () => {
     nodeElements
-//	.attr('cx', function (node) { return node.id ? node.x : width/2})
-//      .attr('cy', function (node) { return node.id ? node.y : ground })
       .attr('cx', function (node) { return node.x })
       .attr('cy', function (node) { return node.y  })
     // textElements
@@ -297,11 +300,17 @@ function updateSimulation() {
 }
 
 // trigger the initial render
-addBase();
+
+let branch = addBase();
+const n = 5;
+for(let i=0; i<n; i++){
+	branch = addNodeAt(branch.target);
+}
+makeBase(branch.target);
+
 updateSimulation()
 
 	d3.select('#button').on('click', function(d) {
-//		addBase();
 		simulation.alphaTarget(0.7).restart()
 //		updateSimulation();
 //		color+=1;
