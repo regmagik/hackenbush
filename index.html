@@ -123,7 +123,9 @@ function colorNode(node, newColor) {
 function addNodeAt(existingNode) {
 	var newId = nId++;
 	console.log('add', newId, 'at', existingNode.id);
-	const newNode = makeNode(newId)
+	const newNode = makeNode(newId);
+	newNode.x = existingNode.x;
+	newNode.y = existingNode.y - 2*nodeRadius;
  	nodes.push(newNode);
 	return link(existingNode, newNode, 'green');
 }
@@ -133,7 +135,8 @@ function addBase() {
 	var base = makeNode(nextBase);
 	makeBase(base);
 
-	base.fx = d3.event?.x || width/2;
+	base.x = base.fx = d3.event?.x || width/2;
+	base.y = base.fy = ground;
 	
 	nodes.push(base);
 	const link = addNodeAt(base);
@@ -237,7 +240,7 @@ var dragDrop = d3.drag().on('start', function (node) {
 //  node.fx = node.x
 //  node.fy = node.y
 }).on('drag', function (node) {
-	const event = d3.event;
+  const event = d3.event;
   node.fx = event.x
   node.fy = event.y
   var distance = event.y - ground
@@ -245,10 +248,15 @@ var dragDrop = d3.drag().on('start', function (node) {
   var close = distance < delta && distance > -delta
   if(close) makeBase(node);
   else makeRegular(node);
-  colorNode(node);
+//  colorNode(node);// colored again later 
 
   let delta2 = delta**2;
   toNode = nodes.find(x => x.id != node.id && distanceSquared(event.x, event.y, x) < delta2);
+  if(toNode)
+  {
+	toNode.fx = toNode.x;
+	toNode.fy = toNode.y;
+  }
   colorNode(node, toNode ? 'yellow' : null);
   simulation.alphaTarget(0.7).restart()
 }).on('end', function (node) {
@@ -305,7 +313,7 @@ function updateSimulation() {
 // trigger the initial render
 
 let branch = addBase();
-const n = 5;
+const n = 3;
 for(let i=0; i<n; i++){
 	branch = addNodeAt(branch.target);
 }
@@ -314,7 +322,8 @@ makeBase(branch.target);
 updateSimulation()
 
 	d3.select('#button').on('click', function(d) {
-		simulation.alphaTarget(0.7).restart()
+		addBase();
+//		simulation.alphaTarget(0.7).restart()
 //		updateSimulation();
 //		color+=1;
 //		console.log(color);
