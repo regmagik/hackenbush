@@ -237,9 +237,10 @@ var dragDrop = d3.drag().on('start', function (node) {
 //  node.fx = node.x
 //  node.fy = node.y
 }).on('drag', function (node) {
-  node.fx = d3.event.x
-  node.fy = d3.event.y
-  var distance = d3.event.y - ground
+	const event = d3.event;
+  node.fx = event.x
+  node.fy = event.y
+  var distance = event.y - ground
   const delta = nodeRadius
   var close = distance < delta && distance > -delta
   if(close) makeBase(node);
