@@ -1,9 +1,12 @@
 <!DOCTYPE html>
-<meta charset="utf-8">
+<html>
+	<head>
+		<title>HackenEdit</title>
+		<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"/>
-
+	</head>
+<body>
 <svg width="100%" height="90%"></svg>
-<div id='button'>Click</div>
 
 <script src="https://d3js.org/d3.v5.min.js"></script>
 <!-- <script src="d3.v4.min.js"></script> -->
@@ -321,8 +324,8 @@ makeBase(branch.target);
 
 updateSimulation()
 
-	d3.select('#button').on('click', function(d) {
-		addBase();
+	// d3.select('#button').on('click', function(d) {
+	// 	addBase();
 //		simulation.alphaTarget(0.7).restart()
 //		updateSimulation();
 //		color+=1;
@@ -332,6 +335,25 @@ updateSimulation()
 //		console.log(links.map(x=>x.target.id));
 		console.log(links);
 //		simulation.stop();
-	});
+//	});
+	const save = ()=>{
+	const state = {
+		nodes: nodes,
+		links: links.map(x=>({...x, source: x.source.id, target: x.target.id}))
+	};
+	localStorage.setItem('state', JSON.stringify(state));
+}
+const load = ()=>{
+	const saved = localStorage.getItem('state');
+	if(!saved) return;
 
+	const state = JSON.parse(saved);
+	nodes = state.nodes;
+	links = state.links;
+	updateSimulation();
+}
 </script>
+<input type="button" value="Save" onclick="save()"/>
+<input type="button" value="Load" onclick="load()"/>
+</body>
+</html>
