@@ -6,15 +6,20 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"/>
 	</head>
 <body>
-	<svg width="100%" height="90vh" style="background-color:rgb(188, 224, 248)"></svg>
+	<svg width="100%" height="85vh" style="background-color:rgb(188, 224, 248)"></svg>
 
 <script src="https://d3js.org/d3.v5.min.js"></script>
 <!-- <script src="d3.v4.min.js"></script> -->
 <script>
 	var width = .9*window.innerWidth
-	var height = .9*window.innerHeight
+//	var height = window.screen.availHeight;//.innerHeight
+	var height = .75*window.innerHeight
 	var ground = .95*height;
 	const nodeRadius = 9;
+
+	var svg = d3.select('svg');
+//  svg.attr('width', width);
+//	svg.attr('height', height);
 
 	let color = 0;
 	var links = [];
@@ -33,7 +38,7 @@
 	// }
 
 function link(from, to, color){
-	const link = {id: linkId++, source: from, target: to, color: color || 'blue'};
+	const link = {id: ++linkId, source: from, target: to, color: color || 'blue'};
 	links.push(link);
 	return link;
 }
@@ -63,10 +68,6 @@ function makeNode(n) {
 		isBase: false,
 	};
 }
-
-var svg = d3.select('svg');
-//svg.attr('width', width);
-svg.attr('height', height);
 
 var linkElements, nodeElements, textElements;
 
@@ -103,7 +104,7 @@ function removeBranch(branch) {
 //	console.log(links);
 //	console.log(nodes);
 	nodes = nodes.filter(x => links.some(l => l.source === x || l.target === x) );
-	console.log(nodes);
+//	nodes = nodes.filter(x => visited[x.id]);
 	updateSimulation();
 }
 
@@ -125,7 +126,7 @@ function colorNode(node, newColor) {
 }
 
 function addNodeAt(existingNode) {
-	var newId = nId++;
+	var newId = ++nId;
 	console.log('add', newId, 'at', existingNode.id);
 	const newNode = makeNode(newId);
 	newNode.x = existingNode.x;
@@ -135,7 +136,7 @@ function addNodeAt(existingNode) {
 }
 
 function addBase() {
-	let nextBase = nId++;
+	let nextBase = ++nId;
 	var base = makeNode(nextBase);
 	makeBase(base);
 
@@ -164,20 +165,21 @@ function updateGraph(nodes) {
     .attr('stroke-width', 5)
     .attr('stroke', 'brown')
 	.attr('x1', 0).attr('y1', ground)
-//	.attr('x2', width).attr('y2', ground)
 	.attr('x2', "100%").attr('y2', ground)
 	.on('click', addBase)
 
   // links
   linkElements = linkGroup.selectAll('line')
     .data(links, x => x.id)
+  // set correct color on load	
+  linkElements.attr('stroke', x => x.color || 'red')
 
   linkElements.exit().transition()
     .duration(333).attr('y1', height).attr('y2', height)
     .style('opacity', 0).remove()
 
-  var linkEnter = linkElements
-    .enter().append('line').attr("id", d => 'b'+d.id)
+  var linkEnter = linkElements.enter()
+  	.append('line').attr("id", d => 'b'+d.id)
     .attr('stroke-width', 6)
     .attr('stroke', x => x.color || 'red')
 	.on('dblclick', removeBranch)
@@ -188,9 +190,12 @@ function updateGraph(nodes) {
   // nodes
   nodeElements = nodeGroup.selectAll('circle')
     .data(nodes, function (node) { return node.id })
+	.attr('fill',  n => n.isBase ? 'black' : 'lightgrey')
+
   nodeElements.exit().transition()
     .duration(333).attr('cy', height)
     .style('opacity', 0).remove()
+  
   var nodeEnter = nodeElements
     .enter().append('circle')
     .attr('stroke',  'grey')
@@ -349,12 +354,17 @@ const load = ()=>{
 	const saved = localStorage.getItem('state');
 	if(!saved) return;
 
+	// nodes = [];
+	// links = [];
+	// updateSimulation();
+
 	const state = JSON.parse(saved);
 	nodes = state.nodes;
 	links = state.links;
 	nId = Math.max(...nodes.map(n=>n.id));
 	linkId = Math.max(...links.map(n=>n.id));
 	updateSimulation();
+//	nodes.forEach(colorNode);
 }
 </script>
 <hr>
