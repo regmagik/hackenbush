@@ -1,15 +1,11 @@
 <!DOCTYPE html>
 <html>
 	<head>
-		<title>Menu</title>
+		<title>HackenEdit</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"/>
 	</head>
 <body>
-	<a href="depth.html">Play with depth</a>
-	or
-	<a href="hackenedit.html">Edit game</a>
-	
 	<svg width="100%" height="85vh" style="background-color:rgb(188, 224, 248)"></svg>
 
 <script src="https://d3js.org/d3.v5.min.js"></script>
@@ -24,6 +20,7 @@
 	var svg = d3.select('svg');
 //  svg.attr('width', width);
 //	svg.attr('height', height);
+    svg.on('click', clickOnCanvas)
 
 	let color = 0;
 	var links = [];
@@ -42,10 +39,138 @@
 	// }
 
 function link(from, to, color){
+	// avoid cycles and duplicate links
+	if(isSameRoot(from, to)) {
+		console.log(`Block linking ${from} and ${to} to avoid cycles`);
+		return;
+	}
+	onLink(from, to);
 	const link = {id: ++linkId, source: from, target: to, color: color || 'blue'};
 	links.push(link);
 	return link;
 }
+
+// n1, n2
+
+// n1 is junction with a neighbour n2
+// n2 has path which has a depth 
+
+// path 12 root n1
+
+// link n1 n3 
+
+// n1 has two neighbours n2 and n3
+// p12 p13 => p213
+
+//let paths = []
+// const newNode = (i) => {
+// 	id: i;
+// 	pathIdentity: null;
+// 	neighbours: []; // sorted array starting with the top depth neighbours
+// }
+
+function getRoot(i) {
+	let root = i.pathIdentity;
+	while(root?.parent) root = root.parent;
+	return root;
+}
+
+function isSameRoot(i, j) {
+	const r = getRoot(i);
+	return r && r === getRoot(j);
+}
+
+function onLink(i, j) {
+	if(!i.pathIdentity && !j.pathIdentity){
+		newPath(i, j, "new");
+		return;
+	}
+	if(i.pathIdentity && !j.pathIdentity ){
+		// check if i is the terminal of its path
+		if(i.pathIdentity.terminals.includes(i.id)){
+			j.pathIdentity = i.pathIdentity;
+			i.pathIdentity.terminals = i.pathIdentity.terminals.map(t => t == i.id ? j.id : t);
+		}
+		else {
+			newPath(i,j, "branch");
+		}
+		return;
+	}
+	if(j.pathIdentity && !i.pathIdentity ){
+		// check if j is the terminal of its path
+		if(j.pathIdentity.terminals.includes(j.id)){
+			i.pathIdentity = j.pathIdentity;
+			j.pathIdentity.terminals = j.pathIdentity.terminals.map(t => t == j.id ? i.id : t);
+		}
+		else {
+			newPath(j,i, "branch");
+		}
+		return;
+	}
+	if(i.pathIdentity && j.pathIdentity){
+		newPath(i,j, "merge");
+		return;
+	}
+	restructure(i);
+}
+
+function restructure(i) {
+}
+
+function newPath(i, j, operation) {
+	const path = {
+		depth: 0,
+		terminals: [i.id, j.id]
+	}
+	switch (operation) {
+		case "new":
+			i.pathIdentity = path;
+			j.pathIdentity = path;
+			path.parent = null;
+			break;
+		case "branch":
+			j.pathIdentity = path;
+			path.parent = i.pathIdentity;
+			let p = path; 
+			while(p.parent && p.parent.depth === p.depth){
+				p = p.parent;
+				p.depth += 1;
+			}
+			break;
+		case "merge":
+
+			break;
+		default:
+			break;
+
+	}
+}
+
+const addToPaths = (i, j) => {
+
+	if (paths.length() == 0) 
+	{
+		paths.push(newPath(i,j));
+		return;
+	}
+
+	let pathToFuse = null;
+	let maxDepth = 0;
+	const neighbourPathsAtSource = paths.filter(p => pathHasNode(p, i));
+	if (neighbourPathsAtSource.length() == 0) {
+		for (const path in neighbourPathsAtSource) {
+			if(path.depth > maxDepth){
+				
+			}
+		}
+	}
+
+	// choose the 2 deepest neighbour path and fuse them
+
+	const neighbourPathsAtTarget = paths.filter(p => pathHasNode(p, j))
+}
+
+//	const neighbours = links.find(link => link.source == i || link.target == j)
 
 let visited = {}
 let neighbours = {}
@@ -83,33 +208,68 @@ var textGroup = svg.append('g').attr('class', 'texts')
 
 // select node is called on every click
 function selectNode(selectedNode) {
+	console.log('selectNode', selectedNode.id);
+	console.log('path', selectedNode.pathIdentity);
+	d3.event?.stopPropagation();
+	selectedNode.isSelected = !selectedNode.isSelected;
+	colorNode(selectedNode, selectedNode.isSelected ? 'yellow' : null);
+//	fixNode(selectedNode, selectedNode.isSelected);
+
+	const selection = nodes.filter(n => n.isSelected);
+	if(selection.length > 1)
+	{
+		link(selection[0], selection[1], 'grey');
+		selection
+			//.filter(n => n.id != selectedNode.id)
+			.forEach(n => selectNode(n))
+
+	}
 //	console.log('before', nodes);
-	addNodeAt(selectedNode)
+//	addNodeAt(selectedNode)
 	updateSimulation();
 }
 
+function fixNode(node, on = true) {
+	node.isBase = on;
+	if(on) {
+		node.fx = node.x;
+		node.fy = node.y;
+	} 
+	else {
+		delete node.fx;
+		delete node.fy;
+	}
+}
+
 function removeBranch(branch) {
-	console.log(branch);
+
+	// TODO: update pathIdentity
+	
+
+	console.log("remove branch", branch);
 	links.splice(links.indexOf(branch), 1);
 
-	initConnections();
-	visited = {}
-	nodes.filter(n => n.isBase).forEach(n => {
-		visitConnected(n.id);
-	});
+	// initConnections();
+	// visited = {}
+	// nodes.filter(n => n.isBase).forEach(n => {
+	// 	visitConnected(n.id);
+	// });
+
+	fixNode(branch.source);
+	fixNode(branch.target);
 
 	// now remove branches/nodes that are no longer supported
-//	nodes.forEach(n => n.isGrounded = null);
-//	nodes.forEach(n => n.isGrounded = isGrounded(n));
-//	console.log('checking', nodes.length, 'nodes');
-//	console.log(nodes);
-//	links = links.filter(x => x.source.isGrounded || x.target.isGrounded);
-	links = links.filter(x => visited[x.source.id]);
+//	links = links.filter(x => visited[x.source.id]);
 //	console.log(links);
 //	console.log(nodes);
-	nodes = nodes.filter(x => links.some(l => l.source === x || l.target === x) );
+//	nodes = nodes.filter(x => links.some(l => l.source === x || l.target === x) );
 //	nodes = nodes.filter(x => visited[x.id]);
 	updateSimulation();
+}
+
+function onClickBranch(branch) {
+	d3.event.stopPropagation();
+	colorBranch(branch);
 }
 
 function colorBranch(branch) {
@@ -122,7 +282,7 @@ function colorBranch(branch) {
 }
 
 function colorNode(node, newColor) {
-	var color = newColor || (node.isBase ? 'black' : 'lightgrey');
+	var color = newColor || (node.isBase ? 'red' : 'lightgrey');
 	d3.select(`#n${node.id}`)
 		.attr('fill', color)
 		.attr('stroke', newColor || 'grey')
@@ -130,13 +290,31 @@ function colorNode(node, newColor) {
 }
 
 function addNodeAt(existingNode) {
-	var newId = ++nId;
-	console.log('add', newId, 'at', existingNode.id);
-	const newNode = makeNode(newId);
-	newNode.x = existingNode.x;
-	newNode.y = existingNode.y - 2*nodeRadius;
- 	nodes.push(newNode);
+	const newNode = addNode(existingNode.x, existingNode.y - 2*nodeRadius);
 	return link(existingNode, newNode, 'green');
+}
+
+function clickOnCanvas(e, z, b) {
+	console.log('clickOnCanvas', e, z, b);
+	let node = addNode(d3.event?.x, d3.event?.y);
+	selectNode(node);
+
+	updateSimulation();
+}
+
+function addNode(x, y) {
+	console.log('addNode', x, y);
+	const fixed = x && y;
+	var newId = ++nId;
+	x = x || d3.event?.x || width/2;
+	y = y || d3.event?.y || height/2;
+	console.log('add', newId, 'at', x, y);
+	const newNode = makeNode(newId);
+	newNode.x = x;
+	newNode.y = y;
+	if(fixed) fixNode(newNode);
+ 	nodes.push(newNode);
+	return newNode;
 }
 
 function addBase() {
@@ -161,16 +339,17 @@ const makeBase = node => {
 
 const makeRegular = node => {
 	node.isBase = false;
+	colorNode(node);
 }
 
 function updateGraph(nodes) {
-  groundLine = baseGroup.selectAll('line').data([0])
-  .enter().append('line')
-    .attr('stroke-width', 5)
-    .attr('stroke', 'brown')
-	.attr('x1', 0).attr('y1', ground)
-	.attr('x2', "100%").attr('y2', ground)
-	.on('click', addBase)
+//   groundLine = baseGroup.selectAll('line').data([0])
+//   .enter().append('line')
+//     .attr('stroke-width', 5)
+//     .attr('stroke', 'brown')
+// 	.attr('x1', 0).attr('y1', ground)
+// 	.attr('x2', "100%").attr('y2', ground)
+// 	.on('click', addBase)
 
   // links
   linkElements = linkGroup.selectAll('line')
@@ -179,7 +358,7 @@ function updateGraph(nodes) {
   linkElements.attr('stroke', x => x.color || 'red')
 
   linkElements.exit().transition()
-    .duration(333).attr('y1', height).attr('y2', height)
+    .duration(333)//.attr('y1', height).attr('y2', height)
     .style('opacity', 0).remove()
 
   var linkEnter = linkElements.enter()
@@ -187,14 +366,14 @@ function updateGraph(nodes) {
     .attr('stroke-width', 6)
     .attr('stroke', x => x.color || 'red')
 	.on('dblclick', removeBranch)
-	.on('click', colorBranch)
+	.on('click', onClickBranch)
 
   linkElements = linkEnter.merge(linkElements)
 
   // nodes
   nodeElements = nodeGroup.selectAll('circle')
     .data(nodes, function (node) { return node.id })
-	.attr('fill',  n => n.isBase ? 'black' : 'lightgrey')
+	.attr('fill', n => 'lightgrey')
 
   nodeElements.exit().transition()
     .duration(333).attr('cy', height)
@@ -202,27 +381,27 @@ function updateGraph(nodes) {
   
   var nodeEnter = nodeElements
     .enter().append('circle')
-    .attr('stroke',  'grey')
+    .attr('stroke',  n => n.isSelected ? 'yellow' : 'grey')
 	.attr("id", n => 'n' + n.id)
     .attr('r', nodeRadius)
-    .attr('fill',  n => n.isBase ? 'black' : 'lightgrey')
+    .attr('fill', 'lightgrey')
     .call(dragDrop)
     // call selectNode method on every click
     .on('click', selectNode)
 
-  nodeElements = nodeEnter.merge(nodeElements)
+  	nodeElements = nodeEnter.merge(nodeElements)
 
   // texts
-  textElements = textGroup.selectAll('text')
-    .data(nodes, function (node) { return node.id })
+ textElements = textGroup.selectAll('text')
+   .data(nodes, function (node) { return node.id })
 
-  textElements.exit().remove()
+ textElements.exit().remove()
 
   var textEnter = textElements
     .enter().append('text')
     .text(function (node) { return node.id })
     .attr('font-size', 10)
-    .attr('dx', -.5*nodeRadius)
+    .attr('dx', 1.5*nodeRadius)
     .attr('dy', .5*nodeRadius)
 
   textElements = textEnter.merge(textElements)
@@ -230,21 +409,21 @@ function updateGraph(nodes) {
 
 // simulation setup with all forces
 var linkForce = d3.forceLink()
-  .id(function (link) { return link.id })
-  .distance(50)
-  .strength(function (link) { return .99; })
+  .id(function (link) { return link.id })
+  .distance(10*nodeRadius)
+  .strength(function (link) { return 1; })
 
 var simulation = d3.forceSimulation().force('link', linkForce)
-// force along horizontal direction
-//  .force('x', d3.forceX().x(function(d) { return 662; }))
+	// force along horizontal direction
+	.force('x', d3.forceX().strength(.01).x( width/2 ))
+	// force along vertical direction
+	.force('y', d3.forceY().strength(.01).y(height/2))
+	//.force('center', d3.forceCenter(width/2, height/2))
 
-// force along vertical direction
-.force('y', d3.forceY().strength(.005).y(function(d) { return 0; }))
+.force('repel', d3.forceManyBody().strength(-10)) // repel
+.force('collision', d3.forceCollide().radius(nodeRadius)); // keep distance
 
-//.force('repel', d3.forceManyBody().strength(-25)) // repel
-.force('collision', d3.forceCollide().radius(22)) // keep distance
-
-//.force('center', d3.forceCenter(width/2, height/2))
+console.log(`alpha ${simulation.alpha()}`)
 
 var toNode = null;
 const distanceSquared = (x, y, node) => (node.x - x)**2 + (node.y - y)**2;
@@ -258,21 +437,26 @@ var dragDrop = d3.drag().on('start', function (node) {
   node.fx = event.x
   node.fy = event.y
   var distance = event.y - ground
-  const delta = nodeRadius
-  var close = distance < delta && distance > -delta
-  if(close) makeBase(node);
-  else makeRegular(node);
+  const delta = 2*nodeRadius
+//  var close = distance < delta && distance > -delta
+//  if(close) makeBase(node);
+//  else makeRegular(node);
 //  colorNode(node);// colored again later 
 
   let delta2 = delta**2;
+  let oldToNode = toNode;
   toNode = nodes.find(x => x.id != node.id && distanceSquared(event.x, event.y, x) < delta2);
+  if(oldToNode)
+  {
+	fixNode(oldToNode, false);
+  }
   if(toNode)
   {
-	toNode.fx = toNode.x;
-	toNode.fy = toNode.y;
+	fixNode(toNode);
   }
   colorNode(node, toNode ? 'yellow' : null);
-  simulation.alphaTarget(0.7).restart()
+  updateSimulation();
+  //simulation.alphaTarget(0.7).restart()
 }).on('end', function (node) {
 	simulation.stop();
 	if(toNode)
@@ -309,29 +493,39 @@ function updateSimulation() {
   .on('tick', () => {
     nodeElements
       .attr('cx', function (node) { return node.x })
-      .attr('cy', function (node) { return node.y  })
+      .attr('cy', function (node) { return node.y  });
     textElements
       .attr('x', function (node) { return node.x })
-      .attr('y', function (node) { return node.y })
+      .attr('y', function (node) { return node.y });
     linkElements
       .attr('x1', function (link) { return link.source.x })
       .attr('y1', function (link) { return link.source.y })
       .attr('x2', function (link) { return link.target.x })
       .attr('y2', function (link) { return link.target.y })
+      .attr('stroke', function (link) { return getColor(link.target.pathIdentity?.depth) });
   })
 
   simulation.force('link').links(links)
   simulation.alphaTarget(0.9).restart()
 }
 
-// trigger the initial render
+const colors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple'];
+const getColor = (index) => colors[(index||0) % colors.length];
 
-let branch = addBase();
-const n = 3;
-for(let i=0; i<n; i++){
-	branch = addNodeAt(branch.target);
-}
-makeBase(branch.target);
+// trigger the initial render
+let node = addNode();
+let branch = addNodeAt(node);
+// let branch = addBase();
+// const n = 1;
+// for(let i=0; i<n; i++){
+// 	branch = addNodeAt(branch.source);
+// }
+
+// making table
+// for(let i=0; i<n; i++){
+// 	branch = addNodeAt(branch.target);
+// }
+// makeBase(branch.target);
 
 updateSimulation()
 
@@ -365,6 +559,7 @@ const load = ()=>{
 	const state = JSON.parse(saved);
 	nodes = state.nodes;
 	links = state.links;
+	console.log(state);
 	nId = Math.max(...nodes.map(n=>n.id));
 	linkId = Math.max(...links.map(n=>n.id));
 	updateSimulation();

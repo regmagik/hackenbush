@@ -1,15 +1,11 @@
 <!DOCTYPE html>
 <html>
 	<head>
-		<title>Menu</title>
+		<title>HackenEdit</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"/>
 	</head>
 <body>
-	<a href="depth.html">Play with depth</a>
-	or
-	<a href="hackenedit.html">Edit game</a>
-	
 	<svg width="100%" height="85vh" style="background-color:rgb(188, 224, 248)"></svg>
 
 <script src="https://d3js.org/d3.v5.min.js"></script>
@@ -79,7 +75,7 @@ var linkElements, nodeElements, textElements;
 var baseGroup = svg.append('g').attr('class', 'base')
 var linkGroup = svg.append('g').attr('class', 'branch')
 var nodeGroup = svg.append('g').attr('class', 'node')
-var textGroup = svg.append('g').attr('class', 'texts')
+//var textGroup = svg.append('g').attr('class', 'texts')
 
 // select node is called on every click
 function selectNode(selectedNode) {
@@ -213,19 +209,19 @@ function updateGraph(nodes) {
   nodeElements = nodeEnter.merge(nodeElements)
 
   // texts
-  textElements = textGroup.selectAll('text')
-    .data(nodes, function (node) { return node.id })
+//  textElements = textGroup.selectAll('text')
+//    .data(nodes, function (node) { return node.id })
 
-  textElements.exit().remove()
+//  textElements.exit().remove()
 
-  var textEnter = textElements
-    .enter().append('text')
-    .text(function (node) { return node.id })
-    .attr('font-size', 10)
-    .attr('dx', -.5*nodeRadius)
-    .attr('dy', .5*nodeRadius)
+//   var textEnter = textElements
+//     .enter().append('text')
+//     .text(function (node) { return node.label })
+//     .attr('font-size', 10)
+//     .attr('dx', 10)
+//     .attr('dy', 4)
 
-  textElements = textEnter.merge(textElements)
+//   textElements = textEnter.merge(textElements)
 }
 
 // simulation setup with all forces
@@ -310,9 +306,9 @@ function updateSimulation() {
     nodeElements
       .attr('cx', function (node) { return node.x })
       .attr('cy', function (node) { return node.y  })
-    textElements
-      .attr('x', function (node) { return node.x })
-      .attr('y', function (node) { return node.y })
+    // textElements
+    //   .attr('x', function (node) { return node.x })
+    //   .attr('y', function (node) { return node.y })
     linkElements
       .attr('x1', function (link) { return link.source.x })
       .attr('y1', function (link) { return link.source.y })
