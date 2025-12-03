@@ -24,9 +24,9 @@
 
 	let color = 0;
 	var links = [];
-	let linkId = 1;
+	let linkId = 0;
 //	link(0, 1, 'red');
-	let nId = 1;
+	let nId = 0;
 	var nodes = [];
 
 	// let nId = numbers.length;
@@ -41,7 +41,7 @@
 function link(from, to, color){
 	// avoid cycles and duplicate links
 	if(isSameRoot(from, to)) {
-		console.log(`Block linking ${from} and ${to} to avoid cycles`);
+//		console.log(`Block linking ${from.id} and ${to.id} to avoid cycles`);
 		return;
 	}
 	onLink(from, to);
@@ -117,6 +117,17 @@ function onLink(i, j) {
 function restructure(i) {
 }
 
+// here i and j are node ids
+function initPath(i, j, depth) {
+	const path = {
+		parent: null,
+		depth: depth || 0,
+		terminals: [i, j]
+	}
+	return path;
+}
+
+// here i and j are nodes
 function newPath(i, j, operation) {
 	const path = {
 		depth: 0,
@@ -133,8 +144,30 @@ function newPath(i, j, operation) {
 			path.parent = i.pathIdentity;
 			let p = path; 
 			while(p.parent && p.parent.depth === p.depth){
+				// decide if the parent should be split
+				const [p1, p2] = splitPathAtNode(p.parent, p.terminals[0]);
+				const [primary, secondary] = p1.depth > p2.depth ? [p1, p2] : [p2, p1];
+//				console.log('primary, secondary', primary.depth, secondary.depth);
+				if(secondary.depth < p.depth){
+					// combine p and primary
+					p.terminals[0] = primary.terminals[0];
+					//reassign pathIdentity to p
+					nodes.find(n => n.id === primary.terminals[0]).pathIdentity = p; 
+					nodes.find(n => n.id === primary.terminals[1]).pathIdentity = p; 
+					primary.insideNodes.forEach(n => n.pathIdentity = p);
+					// make secondary a child of combined path
+					secondary.parent = p;
+					//reassign pathIdentity to secondary
+					nodes.find(n => n.id === secondary.terminals[0]).pathIdentity = secondary; 
+					secondary.insideNodes.forEach(n => n.pathIdentity = secondary);
+					// break parent - child relationship
+					p.parent = null;
+					break;
+				}
+
 				p = p.parent;
 				p.depth += 1;
+
 			}
 			break;
 		case "merge":
@@ -144,6 +177,15 @@ function newPath(i, j, operation) {
 			break;
 
 	}
+}
+
+const splitAt = (path, node) => {
+	// if(node.pathIdentity !== path){
+	// 	console.error(`Split blocked: node ${node.id} is not part of the path`);
+	// 	return;
+	// }
+
+	// visit
 }
 
 const addToPaths = (i, j) => {
@@ -190,11 +232,60 @@ function visitConnected(nodeId){
 		neighbours[nodeId].forEach(id => {if(!visited[id]) visitConnected(id)});
 }
 
+function initPathTraversal(path){
+	const neighbours = {}
+	// for all links touching given path (path links or direct children)
+	// .filter(link.source.pathIdentity === path || link.target.pathIdentity === path )
+	const relevant = links.filter(link => link.source.pathIdentity === path || link.target.pathIdentity === path );
+//	console.log(relevant);
+	relevant.forEach(link => {
+		if(!neighbours[link.source.id]) neighbours[link.source.id] = [];
+		if(!neighbours[link.target.id]) neighbours[link.target.id] = [];
+		neighbours[link.target.id].push(link.source);
+		neighbours[link.source.id].push(link.target);
+	});
+	return {path, neighbours, visited:{}, depth:0};
+}
+
+function explorePathToJunction(state, nodeId, junctionNodeId){
+	if(nodeId === junctionNodeId) return;
+	const {path, neighbours, visited} = state;
+	visited[nodeId] = true;
+
+	if(neighbours[nodeId])
+		neighbours[nodeId].forEach(node => {
+			// is the link is part of the path or starting a child path
+			if(node.pathIdentity === path) {
+				if(!visited[node.id]) explorePathToJunction(state, node.id, junctionNodeId)
+			}
+			else {	// this link belongs to a child path, update depth
+				if(node.pathIdentity.depth >= state.depth){
+					state.depth = node.pathIdentity.depth + 1;
+				}
+			}
+		});	
+}
+
+function getPathFromTerminalToInternal(state, terminal, internal){
+	state.depth = 0;
+	state.visited = {};
+	explorePathToJunction(state, terminal, internal);
+	const path = initPath(terminal, internal, state.depth);
+	path.insideNodes = nodes.filter(n => n.id != terminal && state.visited[n.id]);
+	return path;
+}
+
+function splitPathAtNode(path, nodeId){
+	const state = initPathTraversal(path);
+	const parts = path.terminals.map(t => getPathFromTerminalToInternal(state, t, nodeId));
+	console.log('split:', nodeId, parts);
+	return parts;
+}
+
 function makeNode(n) {
 	console.log('makeNode', n);
 	return {
 		id: n,
-		isBase: false,
 	};
 }
 
@@ -207,30 +298,38 @@ var nodeGroup = svg.append('g').attr('class', 'node')
 var textGroup = svg.append('g').attr('class', 'texts')
 
 // select node is called on every click
-function selectNode(selectedNode) {
-	console.log('selectNode', selectedNode.id);
-	console.log('path', selectedNode.pathIdentity);
+
+function onNodeClick(node) {
 	d3.event?.stopPropagation();
+	console.log(node.id, node.pathIdentity);
+	selectNode(node);
+	connectSelected(node);
+	updateSimulation();
+}
+
+function connectSelected(node) {
+	const selection = nodes.filter(n => n.isSelected);
+	if(selection.length > 1)
+	{
+		link(selection[0], selection[1]);
+		selection
+//			.filter(n => n.id != node.id)
+			.forEach(n => selectNode(n))
+
+	}
+}
+
+function selectNode(selectedNode) {
+//	console.log('selectNode', selectedNode.id);
 	selectedNode.isSelected = !selectedNode.isSelected;
 	colorNode(selectedNode, selectedNode.isSelected ? 'yellow' : null);
 //	fixNode(selectedNode, selectedNode.isSelected);
 
-	const selection = nodes.filter(n => n.isSelected);
-	if(selection.length > 1)
-	{
-		link(selection[0], selection[1], 'grey');
-		selection
-			//.filter(n => n.id != selectedNode.id)
-			.forEach(n => selectNode(n))
-
-	}
 //	console.log('before', nodes);
 //	addNodeAt(selectedNode)
-	updateSimulation();
 }
 
 function fixNode(node, on = true) {
-	node.isBase = on;
 	if(on) {
 		node.fx = node.x;
 		node.fy = node.y;
@@ -242,18 +341,10 @@ function fixNode(node, on = true) {
 }
 
 function removeBranch(branch) {
-
 	// TODO: update pathIdentity
 	
-
 	console.log("remove branch", branch);
 	links.splice(links.indexOf(branch), 1);
-
-	// initConnections();
-	// visited = {}
-	// nodes.filter(n => n.isBase).forEach(n => {
-	// 	visitConnected(n.id);
-	// });
 
 	fixNode(branch.source);
 	fixNode(branch.target);
@@ -269,11 +360,14 @@ function removeBranch(branch) {
 
 function onClickBranch(branch) {
 	d3.event.stopPropagation();
-	colorBranch(branch);
+	console.log(branch.source.id, branch.target.id);
+	console.log(branch.source.pathIdentity.depth, branch.target.pathIdentity.depth);
+	console.log(branch.source.pathIdentity, branch.target.pathIdentity);
+//	colorBranch(branch);
 }
 
 function colorBranch(branch) {
-	console.log('color', branch.color);
+//	console.log('color', branch.color);
 	branch.color = branch.color == 'red' ? 'blue' :
 		branch.color == 'blue' ? 'green' :
 		'red';
@@ -282,7 +376,7 @@ function colorBranch(branch) {
 }
 
 function colorNode(node, newColor) {
-	var color = newColor || (node.isBase ? 'red' : 'lightgrey');
+	var color = newColor || 'lightgrey';
 	d3.select(`#n${node.id}`)
 		.attr('fill', color)
 		.attr('stroke', newColor || 'grey')
@@ -290,56 +384,31 @@ function colorNode(node, newColor) {
 }
 
 function addNodeAt(existingNode) {
-	const newNode = addNode(existingNode.x, existingNode.y - 2*nodeRadius);
+	const newNode = addNode(existingNode.x, existingNode.y - 4*nodeRadius);
 	return link(existingNode, newNode, 'green');
 }
 
 function clickOnCanvas(e, z, b) {
-	console.log('clickOnCanvas', e, z, b);
+//	console.log('clickOnCanvas', e, z, b);
 	let node = addNode(d3.event?.x, d3.event?.y);
 	selectNode(node);
-
+	connectSelected(node);
 	updateSimulation();
 }
 
 function addNode(x, y) {
-	console.log('addNode', x, y);
+//	console.log('addNode', x, y);
 	const fixed = x && y;
 	var newId = ++nId;
 	x = x || d3.event?.x || width/2;
 	y = y || d3.event?.y || height/2;
-	console.log('add', newId, 'at', x, y);
+//	console.log('add', newId, 'at', x, y);
 	const newNode = makeNode(newId);
 	newNode.x = x;
 	newNode.y = y;
 	if(fixed) fixNode(newNode);
  	nodes.push(newNode);
 	return newNode;
-}
-
-function addBase() {
-	let nextBase = ++nId;
-	var base = makeNode(nextBase);
-	makeBase(base);
-
-	base.x = base.fx = d3.event?.x || width/2;
-	base.y = base.fy = ground;
-	
-	nodes.push(base);
-	const link = addNodeAt(base);
-	updateSimulation();
-	return link;
-}
-
-const makeBase = node => {
-	node.isBase = true;
-	node.fy = ground;
-	colorNode(node);
-}
-
-const makeRegular = node => {
-	node.isBase = false;
-	colorNode(node);
 }
 
 function updateGraph(nodes) {
@@ -386,8 +455,8 @@ function updateGraph(nodes) {
     .attr('r', nodeRadius)
     .attr('fill', 'lightgrey')
     .call(dragDrop)
-    // call selectNode method on every click
-    .on('click', selectNode)
+    // call method on every click
+    .on('click', onNodeClick)
 
   	nodeElements = nodeEnter.merge(nodeElements)
 
@@ -423,7 +492,7 @@ var simulation = d3.forceSimulation().force('link', linkForce)
 .force('repel', d3.forceManyBody().strength(-10)) // repel
 .force('collision', d3.forceCollide().radius(nodeRadius)); // keep distance
 
-console.log(`alpha ${simulation.alpha()}`)
+//console.log(`alpha ${simulation.alpha()}`)
 
 var toNode = null;
 const distanceSquared = (x, y, node) => (node.x - x)**2 + (node.y - y)**2;
@@ -502,24 +571,28 @@ function updateSimulation() {
       .attr('y1', function (link) { return link.source.y })
       .attr('x2', function (link) { return link.target.x })
       .attr('y2', function (link) { return link.target.y })
-      .attr('stroke', function (link) { return getColor(link.target.pathIdentity?.depth) });
+      .attr('stroke', function (link) { return getColor(link) });
   })
 
   simulation.force('link').links(links)
   simulation.alphaTarget(0.9).restart()
 }
 
-const colors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple'];
-const getColor = (index) => colors[(index||0) % colors.length];
-
+const colors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'cyan', 'lightblue', 'lightgrey'];
+const getColor = (link) => colors[(linkDepth(link)||0) % colors.length];
+const linkDepth = (link) => Math.min(link.source.pathIdentity?.depth, link.target.pathIdentity?.depth);
 // trigger the initial render
 let node = addNode();
 let branch = addNodeAt(node);
-// let branch = addBase();
-// const n = 1;
-// for(let i=0; i<n; i++){
-// 	branch = addNodeAt(branch.source);
-// }
+//selectNode(branch.target);
+let branch2 = addNodeAt(branch.target);
+fixNode(branch2.target, false);
+
+const n = 2;
+for(let i=0; i<n; i++){
+	branch = addNodeAt(branch.target);
+}
+selectNode(branch.source);
 
 // making table
 // for(let i=0; i<n; i++){
