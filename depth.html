@@ -128,6 +128,9 @@ function initPath(i, j, depth) {
 }
 
 // here i and j are nodes
+const ptostr = (p) => p ? `${p.terminals[0]}-${p.terminals[1]}/${p.depth}` : 'empty path';
+
+// here i and j are nodes
 function newPath(i, j, operation) {
 	const path = {
 		depth: 0,
@@ -144,30 +147,49 @@ function newPath(i, j, operation) {
 			path.parent = i.pathIdentity;
 			let p = path; 
 			while(p.parent && p.parent.depth === p.depth){
+
+				if(p.parent.parent) {
+					p = p.parent;
+					p.depth += 1;
+					continue;
+				}
+
 				// decide if the parent should be split
 				const [p1, p2] = splitPathAtNode(p.parent, p.terminals[0]);
 				const [primary, secondary] = p1.depth > p2.depth ? [p1, p2] : [p2, p1];
-//				console.log('primary, secondary', primary.depth, secondary.depth);
+//				console.log('prim', ptostr(primary), 'sec', ptostr(secondary));
 				if(secondary.depth < p.depth){
-					// combine p and primary
+					// combine p and primary: p will be extended to include primary
 					p.terminals[0] = primary.terminals[0];
-					//reassign pathIdentity to p
-					nodes.find(n => n.id === primary.terminals[0]).pathIdentity = p; 
-					nodes.find(n => n.id === primary.terminals[1]).pathIdentity = p; 
+					//reassign primary's nodes to p
+					primary.terminals.forEach(n => setNodePath(n, p));
 					primary.insideNodes.forEach(n => n.pathIdentity = p);
+					delete primary.insideNodes;
+					primary.children.forEach(c => c.parent = p);
+					delete primary.children;
+					
 					// make secondary a child of combined path
 					secondary.parent = p;
+					secondary.terminals.reverse();
+
 					//reassign pathIdentity to secondary
-					nodes.find(n => n.id === secondary.terminals[0]).pathIdentity = secondary; 
+					nodes.find(n => n.id === secondary.terminals[1]).pathIdentity = secondary; 
 					secondary.insideNodes.forEach(n => n.pathIdentity = secondary);
+					delete secondary.insideNodes;
+					secondary.children.forEach(c => c.parent = secondary);
+					delete secondary.children;
+					
 					// break parent - child relationship
 					p.parent = null;
+//					if(p.parent) setNodePath(p.terminals[0], p.parent);
+//					p = p.parent;
 					break;
 				}
-
-				p = p.parent;
-				p.depth += 1;
-
+				else {
+					p = p.parent;
+					p.depth += 1;
+					break;
+				}
 			}
 			break;
 		case "merge":
@@ -178,6 +200,14 @@ function newPath(i, j, operation) {
 
 	}
 }
+function setNodePath(nodeId, path){
+	const node = nodes.find(n => n.id === nodeId);
+	if(node){
+		console.log(`set node ${node.id} path from ${ptostr(node.pathIdentity)} to ${ptostr(path)}...`);
+		node.pathIdentity = path;
+	}
+	else console.error(`node ${nodeId} not found`); 
+} 
 
 const splitAt = (path, node) => {
 	// if(node.pathIdentity !== path){
@@ -244,7 +274,7 @@ function initPathTraversal(path){
 		neighbours[link.target.id].push(link.source);
 		neighbours[link.source.id].push(link.target);
 	});
-	return {path, neighbours, visited:{}, depth:0};
+	return {path, neighbours, visited:{}, depth:0, children: []};
 }
 
 function explorePathToJunction(state, nodeId, junctionNodeId){
@@ -258,10 +288,11 @@ function explorePathToJunction(state, nodeId, junctionNodeId){
 			if(node.pathIdentity === path) {
 				if(!visited[node.id]) explorePathToJunction(state, node.id, junctionNodeId)
 			}
-			else {	// this link belongs to a child path, update depth
+			else {	// this node belongs to a child path, update depth and append to the childrend list
 				if(node.pathIdentity.depth >= state.depth){
 					state.depth = node.pathIdentity.depth + 1;
 				}
+				state.children.push(node.pathIdentity);
 			}
 		});	
 }
@@ -269,16 +300,18 @@ function explorePathToJunction(state, nodeId, junctionNodeId){
 function getPathFromTerminalToInternal(state, terminal, internal){
 	state.depth = 0;
 	state.visited = {};
+	state.children = [];
 	explorePathToJunction(state, terminal, internal);
 	const path = initPath(terminal, internal, state.depth);
 	path.insideNodes = nodes.filter(n => n.id != terminal && state.visited[n.id]);
+	path.children = state.children;
 	return path;
 }
 
 function splitPathAtNode(path, nodeId){
 	const state = initPathTraversal(path);
 	const parts = path.terminals.map(t => getPathFromTerminalToInternal(state, t, nodeId));
-	console.log('split:', nodeId, parts);
+//	console.log('split at', nodeId, ...parts.map(p => ptostr(p)));
 	return parts;
 }
 
@@ -301,9 +334,10 @@ var textGroup = svg.append('g').attr('class', 'texts')
 
 function onNodeClick(node) {
 	d3.event?.stopPropagation();
-	console.log(node.id, node.pathIdentity);
+	console.log(node.id, ptostr(node.pathIdentity));
 	selectNode(node);
-	connectSelected(node);
+	if(node.isSelected)connectSelected(node);
+	else highlightPath(node);
 	updateSimulation();
 }
 
@@ -315,20 +349,41 @@ function connectSelected(node) {
 		selection
 //			.filter(n => n.id != node.id)
 			.forEach(n => selectNode(n))
-
 	}
 }
 
 function selectNode(selectedNode) {
 //	console.log('selectNode', selectedNode.id);
 	selectedNode.isSelected = !selectedNode.isSelected;
-	colorNode(selectedNode, selectedNode.isSelected ? 'yellow' : null);
+//	colorNode(selectedNode, selectedNode.isSelected ? 'yellow' : null);
 //	fixNode(selectedNode, selectedNode.isSelected);
 
 //	console.log('before', nodes);
 //	addNodeAt(selectedNode)
 }
-
+function fixNodePath(node) {
+	if(node.pathIdentity){
+		const related = links.filter(x => x.source === node || x.target === node);
+		switch(related.length){
+			case 0:
+				node.pathIdentity = null;break;
+			case 1: 
+				if(related[0].source === node) 
+					node.pathIdentity = related[0].target.pathIdentity;
+				if(related[0].target === node) 
+					node.pathIdentity = related[0].source.pathIdentity;
+			break;
+			default:
+				related.forEach(x => { 
+					if(x.source === node && node.pathIdentity.depth < x.target.pathIdentity.depth) 
+						node.pathIdentity = x.target.pathIdentity;
+					if(x.target === node && node.pathIdentity.depth < x.source.pathIdentity.depth) 
+						node.pathIdentity = x.target.pathIdentity;
+				});
+				break;
+		}
+	}
+}
 function fixNode(node, on = true) {
 	if(on) {
 		node.fx = node.x;
@@ -346,8 +401,8 @@ function removeBranch(branch) {
 	console.log("remove branch", branch);
 	links.splice(links.indexOf(branch), 1);
 
-	fixNode(branch.source);
-	fixNode(branch.target);
+	fixNodePath(branch.source);
+	fixNodePath(branch.target);
 
 	// now remove branches/nodes that are no longer supported
 //	links = links.filter(x => visited[x.source.id]);
@@ -380,7 +435,7 @@ function colorNode(node, newColor) {
 	d3.select(`#n${node.id}`)
 		.attr('fill', color)
 		.attr('stroke', newColor || 'grey')
-		.attr('r', newColor ? nodeRadius+2 : nodeRadius)
+		.attr('r', newColor ? nodeRadius+3 : nodeRadius)
 }
 
 function addNodeAt(existingNode) {
@@ -394,6 +449,16 @@ function clickOnCanvas(e, z, b) {
 	selectNode(node);
 	connectSelected(node);
 	updateSimulation();
+}
+
+function highlightPath(node){
+	const path = node?.pathIdentity;
+	console.log(ptostr(path));
+	pathNodes = nodes.filter(n => n.pathIdentity === path);
+	console.log(pathNodes.map(n=>n.id));
+	pathNodes.forEach(selectNode
+//		n => n.isSelected = true
+	);
 }
 
 function addNode(x, y) {
@@ -562,7 +627,8 @@ function updateSimulation() {
   .on('tick', () => {
     nodeElements
       .attr('cx', function (node) { return node.x })
-      .attr('cy', function (node) { return node.y  });
+      .attr('cy', function (node) { return node.y })
+      .attr('stroke', (n) => n.isSelected ? 'yellow' : 'grey');
     textElements
       .attr('x', function (node) { return node.x })
       .attr('y', function (node) { return node.y });
@@ -571,14 +637,15 @@ function updateSimulation() {
       .attr('y1', function (link) { return link.source.y })
       .attr('x2', function (link) { return link.target.x })
       .attr('y2', function (link) { return link.target.y })
-      .attr('stroke', function (link) { return getColor(link) });
+      .attr('stroke', getColor);
   })
 
   simulation.force('link').links(links)
   simulation.alphaTarget(0.9).restart()
 }
 
-const colors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'cyan', 'lightblue', 'lightgrey'];
+const colors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 
+	'lightblue', 'teal', 'cyan', 'magenta', 'pink', 'lightgrey', 'darkgrey'];
 const getColor = (link) => colors[(linkDepth(link)||0) % colors.length];
 const linkDepth = (link) => Math.min(link.source.pathIdentity?.depth, link.target.pathIdentity?.depth);
 // trigger the initial render
