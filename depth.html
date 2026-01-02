@@ -148,20 +148,14 @@ function newPath(i, j, operation) {
 			let p = path; 
 			while(p.parent && p.parent.depth === p.depth){
 
-				if(p.parent.parent) {
-					p = p.parent;
-					p.depth += 1;
-					continue;
-				}
-
-				// decide if the parent should be split
+				// decide if the parent should be restructured
 				const [p1, p2] = splitPathAtNode(p.parent, p.terminals[0]);
-				const [primary, secondary] = p1.depth > p2.depth ? [p1, p2] : [p2, p1];
+				const [primary, secondary] = p2.depth > p1.depth ? [p2, p1] : [p1, p2];
 //				console.log('prim', ptostr(primary), 'sec', ptostr(secondary));
 				if(secondary.depth < p.depth){
 					// combine p and primary: p will be extended to include primary
 					p.terminals[0] = primary.terminals[0];
-					//reassign primary's nodes to p
+					// reassign primary's nodes and children to p
 					primary.terminals.forEach(n => setNodePath(n, p));
 					primary.insideNodes.forEach(n => n.pathIdentity = p);
 					delete primary.insideNodes;
@@ -172,23 +166,27 @@ function newPath(i, j, operation) {
 					secondary.parent = p;
 					secondary.terminals.reverse();
 
-					//reassign pathIdentity to secondary
+					// reassign pathIdentity to secondary
 					nodes.find(n => n.id === secondary.terminals[1]).pathIdentity = secondary; 
 					secondary.insideNodes.forEach(n => n.pathIdentity = secondary);
 					delete secondary.insideNodes;
 					secondary.children.forEach(c => c.parent = secondary);
 					delete secondary.children;
 					
-					// break parent - child relationship
-					p.parent = null;
-//					if(p.parent) setNodePath(p.terminals[0], p.parent);
-//					p = p.parent;
-					break;
+					if(!p.parent.parent) {
+						p.parent = null;
+						break;
+					}
+
+					// attach the restructured path to the next parent
+					setNodePath(p.terminals[0], p.parent.parent);
+					p.parent = p.parent.parent;
+
+					p = p.parent;
 				}
 				else {
 					p = p.parent;
 					p.depth += 1;
-					break;
 				}
 			}
 			break;
@@ -311,6 +309,10 @@ function getPathFromTerminalToInternal(state, terminal, internal){
 function splitPathAtNode(path, nodeId){
 	const state = initPathTraversal(path);
 	const parts = path.terminals.map(t => getPathFromTerminalToInternal(state, t, nodeId));
+	if(path.parent?.depth > parts[0].depth){
+		parts[0].depth = path.parent.depth;
+	}
+
 //	console.log('split at', nodeId, ...parts.map(p => ptostr(p)));
 	return parts;
 }
