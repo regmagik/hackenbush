@@ -15,7 +15,7 @@
 //	var height = window.screen.availHeight;//.innerHeight
 	var height = .75*window.innerHeight
 	var ground = .95*height;
-	const nodeRadius = 9;
+	const nodeRadius = 8;
 
 	var svg = d3.select('svg');
 //  svg.attr('width', width);
@@ -146,7 +146,7 @@ function newPath(i, j, operation) {
 			j.pathIdentity = path;
 			path.parent = i.pathIdentity;
 			let p = path; 
-			while(p.parent && p.parent.depth === p.depth){
+			while(p.parent){
 
 				// decide if the parent should be restructured
 				const [p1, p2] = splitPathAtNode(p.parent, p.terminals[0]);
@@ -155,6 +155,7 @@ function newPath(i, j, operation) {
 				if(secondary.depth < p.depth){
 					// combine p and primary: p will be extended to include primary
 					p.terminals[0] = primary.terminals[0];
+					if(!p.parent.parent)p.depth = Math.max(p.depth, primary.depth);
 					// reassign primary's nodes and children to p
 					primary.terminals.forEach(n => setNodePath(n, p));
 					primary.insideNodes.forEach(n => n.pathIdentity = p);
@@ -182,12 +183,12 @@ function newPath(i, j, operation) {
 					setNodePath(p.terminals[0], p.parent.parent);
 					p.parent = p.parent.parent;
 
-					p = p.parent;
 				}
 				else {
-					p = p.parent;
-					p.depth += 1;
+					if(p.parent.depth === p.depth)
+						p.parent.depth += 1;
 				}
+				p = p.parent;
 			}
 			break;
 		case "merge":
@@ -441,7 +442,7 @@ function colorNode(node, newColor) {
 }
 
 function addNodeAt(existingNode) {
-	const newNode = addNode(existingNode.x, existingNode.y - 4*nodeRadius);
+	const newNode = addNode(existingNode.x, existingNode.y + 5*nodeRadius);
 	return link(existingNode, newNode, 'green');
 }
 
